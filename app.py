@@ -4,11 +4,33 @@ from dash import html, dcc, Input, Output, State
 import dash_cytoscape as cyto
 from sim_engine import VisualSimulator, VisualNetwork, VisualNode, VisualSwitch, config
 import os
+import json
 
 # Load GUIDE.md content
 guide_path = os.path.join(os.path.dirname(__file__), 'GUIDE.md')
 with open(guide_path, 'r') as f:
     guide_content = f.read()
+
+# Load available benchmarks
+def load_benchmark_scenarios():
+    """Load all benchmark scenarios from benchmarks/ folder"""
+    scenarios = {}
+    benchmark_dir = 'benchmarks'
+    
+    if os.path.exists(benchmark_dir):
+        for filename in os.listdir(benchmark_dir):
+            if filename.endswith('.json'):
+                filepath = os.path.join(benchmark_dir, filename)
+                try:
+                    with open(filepath, 'r') as f:
+                        scenario = json.load(f)
+                        scenarios[scenario.get('name', filename[:-5])] = scenario
+                except Exception as e:
+                    print(f"Failed to load {filename}: {e}")
+    
+    return scenarios
+
+available_benchmarks = load_benchmark_scenarios()
 
 # --- Setup Simulation ---
 sim = VisualSimulator()
@@ -215,7 +237,50 @@ app.layout = html.Div([
                  'marginBottom': '15px', 'padding': '5px', 'backgroundColor': '#2a2a2a', 'borderRadius': '3px'}),
 
         html.Hr(style={'borderColor': '#555'}),
-        html.Div("Simulation Params", style={
+        html.Div("Load Benchmark", style={
+                 'color': 'white', 'textAlign': 'center', 'marginBottom': '5px'}),
+        
+        html.Div("Select Scenario:", style={'color': '#aaa', 'fontSize': '11px', 'marginTop': '10px', 'marginBottom': '5px'}),
+        dcc.Dropdown(
+            id='benchmark-dropdown',
+            options=[{'label': f"{name} - {data.get('description', '')[:30]}", 'value': name} 
+                     for name, data in available_benchmarks.items()],
+            placeholder="Choose a benchmark...",
+            style={'marginBottom': '10px', 'fontSize': '11px'}
+        ),
+        html.Button('Apply Benchmark', id='load-benchmark-btn', n_clicks=0,
+                   style={'width': '100%', 'backgroundColor': '#2196F3', 'color': 'white',
+                          'border': 'none', 'borderRadius': '4px', 'padding': '6px',
+                          'cursor': 'pointer', 'fontWeight': 'bold', 'fontSize': '11px', 'marginBottom': '5px'}),
+        html.Div(id='benchmark-status', style={'color': '#4CAF50', 'fontSize': '9px',
+                 'textAlign': 'center', 'marginBottom': '10px'}),
+
+        html.Hr(style={'borderColor': '#555'}),
+        html.Div("Synchronization", style={
+                 'color': 'white', 'textAlign': 'center', 'marginBottom': '5px'}),
+        
+        html.Div("Sync Model:", style={'color': '#aaa', 'fontSize': '11px', 'marginTop': '10px', 'marginBottom': '5px'}),
+        dcc.Dropdown(
+            id='sync-model-dropdown',
+            options=[
+                {'label': 'Asynchronous', 'value': 'asynchronous'},
+                {'label': 'Synchronous', 'value': 'synchronous'},
+                {'label': 'Partial Sync', 'value': 'partial_synchronous'}
+            ],
+            value=config.sync_model,
+            style={'marginBottom': '10px', 'fontSize': '11px'}
+        ),
+
+        html.Hr(style={'borderColor': '#555'}),
+        html.Div("Network Conditions", style={
+                 'color': 'white', 'textAlign': 'center', 'marginBottom': '5px'}),
+        
+        create_slider("Packet Loss:", 'slider-packet-loss', 0, 0.5, 0.0, 0.01),
+        create_slider("Jitter (s):", 'slider-jitter', 0, 1.0, 0.0, 0.05),
+        create_slider("Reorder Prob:", 'slider-reorder', 0, 0.5, 0.0, 0.01),
+
+        html.Hr(style={'borderColor': '#555'}),
+        html.Div("Fault Injection", style={
                  'color': 'white', 'textAlign': 'center', 'marginBottom': '5px'}),
 
         create_slider("HW Fault Rate:", 'slider-fault-prob',
@@ -229,6 +294,12 @@ app.layout = html.Div([
         html.Div("Parameter Guide", style={
                  'color': 'white', 'fontSize': '11px', 'fontWeight': 'bold', 'marginBottom': '8px'}),
         html.Div([
+            html.Div("• Packet Loss: % of packets dropped",
+                     style={'color': '#bbb', 'fontSize': '10px', 'marginBottom': '4px'}),
+            html.Div("• Jitter: Random latency variance",
+                     style={'color': '#bbb', 'fontSize': '10px', 'marginBottom': '4px'}),
+            html.Div("• Reorder: % chance of out-of-order delivery",
+                     style={'color': '#bbb', 'fontSize': '10px', 'marginBottom': '4px'}),
             html.Div("• HW Fault: % chance per second a hardware fault appears",
                      style={'color': '#bbb', 'fontSize': '10px', 'marginBottom': '4px'}),
             html.Div("• Power Fail: % chance a fault causes shutdown",
@@ -236,11 +307,15 @@ app.layout = html.Div([
             html.Div("• Critical: CPU/Memory/Disk % threshold to turn red",
                      style={'color': '#bbb', 'fontSize': '10px', 'marginBottom': '4px'}),
         ]),
+        html.Div("", style={
+                 'color': 'white', 'fontSize': '11px', 'marginBottom': '40px'}),
+
 
     ], style={
         'width': '200px',
         'backgroundColor': '#263238',
         'padding': '20px',
+        'paddingBottom': '40px',
         'display': 'flex',
         'flexDirection': 'column',
         'height': '100vh',
@@ -301,6 +376,20 @@ app.layout = html.Div([
             })
         ], style={'display': 'flex', 'flexDirection': 'row', 'justifyContent': 'center', 'alignItems': 'flex-start', 'margin': '15px auto', 'maxWidth': '1000px'}),
 
+        # Performance Metrics Panel
+        html.Div([
+            html.H4("Performance Metrics", style={'marginBottom': '8px'}),
+            html.Div(id='metrics-panel', style={
+                'height': '120px',
+                'overflowY': 'scroll',
+                'border': '1px solid #ccc',
+                'padding': '8px',
+                'fontFamily': 'monospace',
+                'fontSize': '10px',
+                'backgroundColor': '#f9f9f9'
+            })
+        ], style={'width': '900px', 'margin': '15px auto'}),
+
         # System Logs
         html.Div([
             html.H4("System Logs", style={'marginBottom': '8px'}),
@@ -337,7 +426,7 @@ app.layout = html.Div([
 
     ], style={'marginLeft': '220px', 'marginRight': '520px', 'padding': '20px', 'flex': 1}),
 
-    # Right Sidebar Panel
+    # Right Sidebar Panel - Guide
     html.Div([
         html.Hr(style={'borderColor': '#555'}),
         html.Div(id='right-panel-content', style={
@@ -360,6 +449,7 @@ app.layout = html.Div([
         'right': 0,
         'top': 0
     })
+
 
 ], style={'fontFamily': 'Arial', 'backgroundColor': '#fafafa', 'minHeight': '100vh', 'display': 'flex'})
 
@@ -710,18 +800,28 @@ def update_algorithm(selected_algo):
     Output('config-store', 'data'),
     [Input('slider-fault-prob', 'value'),
      Input('slider-power-fail', 'value'),
-     Input('slider-critical', 'value')]
+     Input('slider-critical', 'value'),
+     Input('slider-packet-loss', 'value'),
+     Input('slider-jitter', 'value'),
+     Input('slider-reorder', 'value'),
+     Input('sync-model-dropdown', 'value')]
 )
-def update_config(fault_prob, power_fail_prob, critical_thresh):
+def update_config(fault_prob, power_fail_prob, critical_thresh, packet_loss, jitter, reorder, sync_model):
     import sim_engine
     sim_engine.config.hw_fault_prob = fault_prob
     sim_engine.config.power_failure_prob = power_fail_prob
     sim_engine.config.critical_threshold = critical_thresh
+    sim_engine.config.packet_loss_rate = packet_loss
+    sim_engine.config.jitter_range = jitter
+    sim_engine.config.reorder_probability = reorder
+    sim_engine.config.sync_model = sync_model
 
     print(
-        f"CONFIG: HW_Fault={fault_prob:.3f}, Power_Fail={power_fail_prob:.2f}, Critical={critical_thresh}")
+        f"CONFIG: HW_Fault={fault_prob:.3f}, Power_Fail={power_fail_prob:.2f}, Critical={critical_thresh}, "
+        f"PacketLoss={packet_loss:.3f}, Jitter={jitter:.2f}, Reorder={reorder:.3f}, SyncModel={sync_model}")
 
     return {'updated': True}
+
 
 
 @app.callback(
@@ -795,5 +895,123 @@ def display_edge_info(edge_data):
     return msg_items
 
 
+@app.callback(
+    Output('metrics-panel', 'children'),
+    Input('interval-component', 'n_intervals')
+)
+def update_metrics_panel(n):
+    """Update the metrics display panel"""
+    if not hasattr(sim, 'metrics'):
+        return html.Div("Metrics not available", style={'color': '#999'})
+    
+    metrics = sim.metrics.get_global_stats(sim.time)
+    
+    # Create compact metrics display
+    metrics_items = []
+    
+    # Network Stats - single line
+    delivery_color = '#4CAF50' if metrics.get('delivery_rate', 0) > 0.9 else '#ff6b6b'
+    metrics_items.append(html.Div(
+        f"Sent: {metrics.get('packets_sent', 0)} | Recv: {metrics.get('packets_received', 0)} | "
+        f"Dropped: {metrics.get('packets_dropped', 0)} | Delivery: {metrics.get('delivery_rate', 0):.1%}",
+        style={'marginBottom': '5px', 'color': delivery_color, 'fontWeight': 'bold'}
+    ))
+    
+    # Latency Stats - compact
+    if 'latency' in metrics and metrics['latency'].get('count', 0) > 0:
+        lat = metrics['latency']
+        metrics_items.append(html.Div(
+            f"Latency: Min={lat.get('min', 0):.3f}s | Avg={lat.get('avg', 0):.3f}s | "
+            f"Max={lat.get('max', 0):.3f}s | P95={lat.get('p95', 0):.3f}s | P99={lat.get('p99', 0):.3f}s",
+            style={'marginBottom': '5px'}
+        ))
+    
+    # Throughput - single line
+    if 'throughput' in metrics:
+        tput = metrics['throughput']
+        metrics_items.append(html.Div(
+            f"Throughput: {tput.get('messages_per_second', 0):.2f} msg/s | Total: {tput.get('total_messages', 0)}",
+            style={'marginBottom': '5px'}
+        ))
+    
+    # Sync issues - if any
+    sync_violations = metrics.get('sync_violations', 0)
+    sync_timeouts = metrics.get('sync_timeouts', 0)
+    if sync_violations > 0 or sync_timeouts > 0:
+        metrics_items.append(html.Div(
+            f"Sync Violations: {sync_violations} | Timeouts: {sync_timeouts}",
+            style={'marginBottom': '5px', 'color': '#ff6b6b'}
+        ))
+    
+    # Faults - if any
+    node_failures = metrics.get('node_failures', 0)
+    partition_events = metrics.get('partition_events', 0)
+    if node_failures > 0 or partition_events > 0:
+        metrics_items.append(html.Div(
+            f"Node Failures: {node_failures} | Partitions: {partition_events}",
+            style={'marginBottom': '5px', 'color': '#9C27B0'}
+        ))
+    
+    # Current config - compact
+    import sim_engine
+    current_config = sim_engine.config
+    
+    metrics_items.append(html.Div(
+        f"Config: {current_config.sync_model} | Loss={current_config.packet_loss_rate:.1%} | "
+        f"Jitter=±{current_config.jitter_range:.2f}s | Reorder={current_config.reorder_probability:.1%} | "
+        f"Faults={current_config.hw_fault_prob:.1%}/{current_config.power_failure_prob:.0%}",
+        style={'marginTop': '5px', 'color': '#607D8B', 'fontSize': '9px'}
+    ))
+    
+    return metrics_items
+
+
+@app.callback(
+    [Output('benchmark-status', 'children'),
+     Output('slider-packet-loss', 'value'),
+     Output('slider-jitter', 'value'),
+     Output('slider-reorder', 'value'),
+     Output('sync-model-dropdown', 'value'),
+     Output('slider-fault-prob', 'value'),
+     Output('slider-power-fail', 'value')],
+    Input('load-benchmark-btn', 'n_clicks'),
+    State('benchmark-dropdown', 'value'),
+    prevent_initial_call=True
+)
+def load_benchmark(n_clicks, selected_benchmark):
+    """Load a benchmark configuration and update all controls"""
+    if not selected_benchmark or selected_benchmark not in available_benchmarks:
+        return "⚠️ Please select a benchmark", dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    
+    scenario = available_benchmarks[selected_benchmark]
+    
+    # Extract values from scenario
+    packet_loss = scenario.get('packet_loss_rate', 0.0)
+    jitter = scenario.get('jitter_range', 0.0)
+    reorder = scenario.get('reorder_probability', 0.0)
+    sync_model = scenario.get('sync_model', 'asynchronous')
+    hw_fault = scenario.get('hw_fault_prob', 0.005)
+    power_fail = scenario.get('power_failure_prob', 0.5)
+    
+    # Update config immediately
+    import sim_engine
+    sim_engine.config.packet_loss_rate = packet_loss
+    sim_engine.config.jitter_range = jitter
+    sim_engine.config.reorder_probability = reorder
+    sim_engine.config.sync_model = sync_model
+    sim_engine.config.hw_fault_prob = hw_fault
+    sim_engine.config.power_failure_prob = power_fail
+    
+    # Update network latency if available
+    if sim.network:
+        sim.network.latency = scenario.get('latency', 0.5)
+    
+    status_msg = f"✓ Loaded: {scenario.get('name', selected_benchmark)} - {scenario.get('description', '')}"
+    
+    return status_msg, packet_loss, jitter, reorder, sync_model, hw_fault, power_fail
+
+
+
 if __name__ == '__main__':
     app.run(debug=True)
+

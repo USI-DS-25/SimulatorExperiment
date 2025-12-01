@@ -1,0 +1,22 @@
+{
+    "name": "lossy_network",
+    "description": "Network with high packet loss",
+    "duration": 60.0,
+    "latency": 1.0,
+    "packet_loss_rate": 0.1,
+    "jitter_range": 0.2,
+    "reorder_probability": 0.1,
+    "bandwidth_mbps": 1000.0,
+    "sync_model": "asynchronous",
+    "max_clock_drift": 0.01,
+    "sync_violation_prob": 0.0,
+    "hw_fault_prob": 0.005,
+    "power_failure_prob": 0.1,
+    "partition_schedule": [],
+    "num_nodes": 9,
+    "nodes_per_rack": [
+        5,
+        4
+    ],
+    "algorithm_name": "random_traffic"
+}

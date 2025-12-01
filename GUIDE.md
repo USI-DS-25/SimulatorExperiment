@@ -7,6 +7,11 @@ python3 app.py
 ```
 Then open your web browser to **http://127.0.0.1:8050/**.
 
+To run benchmarks:
+```bash
+python3 run_benchmark.py
+```
+
 ---
 
 ## 2. How to Add a New Algorithm
@@ -51,40 +56,87 @@ Your algorithm interacts with `VisualNode` objects. Here are the key variables y
 - **`node.is_shutdown`** *(Bool)*: True if the node is powered off.
 
 ### Actions
-- **`node.send(message, target=node_id)`**: Sends a message. `message` can be a string or object.
+- **`node.send(message, target=node_id)`**: Asynchronous send (fire and forget).
+- **`node.sync_send(message, target=node_id, timeout=2.0)`**: Synchronous send with acknowledgment. Returns `True` if successful.
+- **`node.set_timer(timer_id, delay, callback)`**: Schedule a callback.
 
 ---
 
 ## 4. Configuration (Probabilities & Thresholds)
-The simulation parameters are defined in **`sim_engine.py`**.
+The simulation parameters are defined in **`sim_engine.py`** and `utils/protocol.py`.
 
-Look for the `SimulationConfig` class at the top of the file:
-```python
-@dataclass
-class SimulationConfig:
-    idle_spike_prob: float = 0.1      # Chance of random CPU load
-    hw_fault_prob: float = 0.005      # Chance of hardware failure
-    critical_threshold: float = 90.0  # % usage to turn node RED
-    # ...
-```
-You can change the default values here directly.
+### Synchronization
+- `sync_model`: "synchronous" | "asynchronous" | "partial_synchronous"
+- `max_clock_drift`: Maximum clock drift (default: 0.01s)
+- `sync_timeout`: Timeout for sync operations (default: 5.0s)
+
+### Network
+- `packet_loss_rate`: 0.0 - 1.0 (default: 0.0)
+- `bandwidth_mbps`: Network bandwidth (default: 1000.0)
+- `jitter_range`: Latency variance in seconds (default: 0.0)
+- `reorder_probability`: 0.0 - 1.0 (default: 0.0)
+
+### Faults
+- `hw_fault_prob`: Hardware fault rate (default: 0.005)
+- `power_failure_prob`: Power failure rate (default: 0.5)
 
 ---
 
-## 5. How to Add New Sliders & Controls
-To add a new slider to the UI (e.g., to control a new variable):
+## 5. Benchmarking
 
-1.  **Add the UI Element**:
-    Open `app.py` and find the `app.layout` section (specifically the `# Sidebar` div). Add a new slider:
-    ```python
-    create_slider("My New Param", 'slider-my-param', min=0, max=100, default=50)
-    ```
+### Create Scenario
+Create a JSON file in `benchmarks/`:
+```json
+{
+  "name": "my_scenario",
+  "description": "Test scenario",
+  "duration": 60.0,
+  "latency": 1.0,
+  "packet_loss_rate": 0.05,
+  "sync_model": "asynchronous",
+  "algorithm_name": "random_traffic"
+}
+```
 
-2.  **Connect the Logic**:
-    Find the `@app.callback` function named `update_config` in `app.py`.
-    - Add `Input('slider-my-param', 'value')` to the list of inputs.
-    - Add a new argument to the `update_config` function definition.
-    - Update the config variable inside the function:
-      ```python
-      sim_engine.config.my_new_param = new_slider_value
-      ```
+### Run Benchmark
+```python
+from utils.benchmark import BenchmarkRunner, BenchmarkScenario
+
+scenario = BenchmarkScenario.from_json("benchmarks/my_scenario.json")
+runner = BenchmarkRunner()
+results = runner.run_scenario(scenario, create_simulator, num_trials=3)
+```
+
+---
+
+## 6. Performance Metrics
+
+### Latency Statistics
+- Min, Max, Average
+- Median (P50)
+- P95, P99 percentiles
+
+### Throughput
+- Messages per second
+- Bytes per second
+
+### Network Stats
+- Packets sent/received/dropped
+- Delivery rate
+- Sync violations/timeouts
+
+### Export Metrics
+```python
+# JSON export
+sim.metrics.export_to_json("metrics.json", sim.time)
+```
+
+---
+
+## 7. Best Practices
+
+1. **Use sync_send for consensus protocols** - Ensures message delivery
+2. **Set appropriate timeouts** - Based on expected network conditions
+3. **Handle partitions gracefully** - Design for split-brain scenarios
+4. **Monitor metrics** - Track latency and throughput
+5. **Run multiple trials** - Get statistical significance
